@@ -4,6 +4,14 @@ using System.Linq;
 using System.Xml.Linq;
 using System.Collections.Generic;
 
+class Articol
+{
+    public string Nume = "";
+    public string Folder = "";
+    public List<string> Categorii = new List<string>();
+    public List<string> Cuvinte = new List<string>();
+}
+
 class Program
 {
     static void Main()
@@ -17,6 +25,10 @@ class Program
 
         var stopwords = new HashSet<string>(File.ReadAllLines(caleStopwords).Select(w => w.Trim().ToLower()));
         var stemmer = new WordFrequency.PorterStemmer();
+
+        List<string> dictionarGlobal = new List<string>();
+        Dictionary<string, int> indexCuvinte = new Dictionary<string, int>();
+        List<Articol> articole = new List<Articol>();
 
         string[] foldere = { "Training", "Testing" };
 
@@ -50,19 +62,65 @@ class Program
                 var cuvinte = new string(caractere)
                     .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
                     .Where(w => w.Length > 1 && !stopwords.Contains(w))
-                    .Select(w => stemmer.StemWord(w));
+                    .Select(w => stemmer.StemWord(w))
+                    .ToList();
 
-                string textFinal = string.Join(delimitator, cuvinte);
+                foreach (var w in cuvinte)
+                {
+                    if (!indexCuvinte.ContainsKey(w))
+                    {
+                        indexCuvinte[w] = dictionarGlobal.Count;
+                        dictionarGlobal.Add(w);
+                    }
+                }
+
+                string numeFisier = Path.GetFileNameWithoutExtension(fisier);
+                articole.Add(new Articol
+                {
+                    Nume = numeFisier,
+                    Folder = folder,
+                    Categorii = categorii,
+                    Cuvinte = cuvinte
+                });
 
                 // Salvare in fisier separat
-                string numeFisier = Path.GetFileNameWithoutExtension(fisier) + ".txt";
-                string caleFisierIesire = Path.Combine(subfolderIesire, numeFisier);
-
+                string caleFisierIesire = Path.Combine(subfolderIesire, numeFisier + ".txt");
                 string continutFisier = "Titlu: " + titlu + Environment.NewLine +
                                         "Categorii: " + string.Join(" ", categorii) + Environment.NewLine +
-                                        "Cuvinte: " + textFinal;
+                                        "Cuvinte: " + string.Join(delimitator, cuvinte);
                 File.WriteAllText(caleFisierIesire, continutFisier);
             }
         }
+
+        // Salvare vectori rar
+        List<string> linii = new List<string>();
+
+        foreach (var w in dictionarGlobal)
+        {
+            linii.Add("@attribute " + w);
+        }
+
+        linii.Add("@data");
+
+        foreach (var art in articole)
+        {
+            Dictionary<int, int> frecvente = new Dictionary<int, int>();
+            foreach (var w in art.Cuvinte)
+            {
+                int idx = indexCuvinte[w];
+                if (!frecvente.ContainsKey(idx))
+                    frecvente[idx] = 0;
+                frecvente[idx]++;
+            }
+
+            var vectorRar = frecvente.OrderBy(x => x.Key).Select(x => x.Key + ":" + x.Value);
+            string linieVector = string.Join(" ", vectorRar);
+            string categoriiStr = string.Join(" ", art.Categorii);
+
+            linii.Add(art.Nume + " # " + linieVector + " # " + categoriiStr + " # " + art.Folder);
+        }
+
+        string fisierVectori = Path.Combine(folderIesire, "vectori_rar.txt");
+        File.WriteAllLines(fisierVectori, linii);
     }
 }
